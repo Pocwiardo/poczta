@@ -1,5 +1,5 @@
 import sys
-from PySide6 import QtWidgets
+from PySide6 import QtWidgets, QtCore
 import smtplib
 import email
 import imaplib
@@ -21,6 +21,8 @@ class EmailReader(QtWidgets.QWidget):
 
         # Wybór skrzynki odbiorczej
         self.imap.select('inbox')
+
+        self.auto_reply()
 
         # Wyszukiwanie nieprzeczytanych wiadomości
         self.status, self.response = self.imap.search(None, 'ALL')
@@ -46,11 +48,65 @@ class EmailReader(QtWidgets.QWidget):
         self.new_mail_button = QtWidgets.QPushButton('Nowa wiadomość', self)
         self.new_mail_button.clicked.connect(self.open_mail_dialog)
 
+        # Przycisk odświeżania
+        self.refresh_button = QtWidgets.QPushButton('Odśwież', self)
+        self.refresh_button.clicked.connect(self.refresh_messages)
+
         # Układanie elementów w oknie
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.addWidget(self.msg_list_widget)
         self.layout.addWidget(self.show_msg_button)
         self.layout.addWidget(self.new_mail_button)
+        self.layout.addWidget(self.refresh_button)
+
+    def refresh_messages(self):
+        # Wyszukiwanie nieprzeczytanych wiadomości
+        self.imap.select('inbox')
+        self.status, self.response = self.imap.search(None, 'ALL')
+        self.unread_msg_nums = self.response[0].split()
+
+        # Czyszczenie listy tematów nieprzeczytanych wiadomości
+        self.msg_list_widget.clear()
+
+        # Tworzenie listy tematów nieprzeczytanych wiadomości
+        for num in self.unread_msg_nums:
+            self.status, self.response = self.imap.fetch(num, '(RFC822)')
+            self.msg = email.message_from_bytes(self.response[0][1])
+            self.subject = self.msg['Subject']
+            self.msg_list_widget.addItem(self.subject)
+            
+    def auto_reply(self):
+        # Wyszukiwanie nieprzeczytanych wiadomości
+        self.imap.select('inbox')
+        self.status, self.response = self.imap.search(None, 'UNSEEN')
+
+        for num in self.response[0].split():
+            # Pobieranie nieprzeczytanych wiadomości
+            self.status, self.response = self.imap.fetch(num, '(RFC822)')
+            email_data = self.response[0][1]
+            message = email.message_from_bytes(email_data)
+
+            # Pobieranie nadawcy i tematu wiadomości
+            sender = message['From']
+            subject = message['Subject']
+
+            # Tworzenie odpowiedzi na wiadomość
+            #reply = email.message.EmailMessage()
+            #reply['To'] = sender
+            #reply['From'] = self.imap_username
+            #reply['Subject'] = 'Re: ' + subject
+            subject = 'Re: ' + subject
+            #reply.set_content('Automatyczna odpowiedź: Otrzymałem twoją wiadomość.')
+            replied_message = 'Automatyczna odpowiedź: Otrzymałem twoją wiadomość. Odpiszę na nią tak szybko jak to możliwe'
+
+            # Wysyłanie odpowiedzi
+            #self.smtp.send_message(reply)
+            self.send_mail(sender,subject,replied_message)
+
+        # Oczekiwanie na kolejne wiadomości
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.auto_reply)
+        self.timer.start(60000)  # Czas w milisekundach (1 minuta = 60 000 ms)
 
     def open_mail_dialog(self):
         # Tworzenie nowego okna dialogowego
