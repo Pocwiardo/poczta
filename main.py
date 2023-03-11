@@ -5,6 +5,7 @@ import email
 import imaplib
 import email
 import os
+from gensim.models import KeyedVectors
 
 class EmailReader(QtWidgets.QWidget):
     def __init__(self):
@@ -23,7 +24,7 @@ class EmailReader(QtWidgets.QWidget):
         self.imap.select('inbox')
 
         self.auto_reply()
-
+        #self.model = KeyedVectors.load_word2vec_format('nkjp+wiki-forms-restricted-100-skipg-ns.txt')
         # Wyszukiwanie nieprzeczytanych wiadomości
         self.status, self.response = self.imap.search(None, 'ALL')
 
@@ -52,12 +53,36 @@ class EmailReader(QtWidgets.QWidget):
         self.refresh_button = QtWidgets.QPushButton('Odśwież', self)
         self.refresh_button.clicked.connect(self.refresh_messages)
 
+        # Pole tekstowe dla słowa kluczowego
+        self.keyword_textbox = QtWidgets.QLineEdit(self)
+        self.keyword_textbox.setPlaceholderText('Wpisz słowo kluczowe')
+        self.keyword_textbox.returnPressed.connect(self.refresh_messages)
+
         # Układanie elementów w oknie
         self.layout = QtWidgets.QVBoxLayout(self)
+        self.layout.addWidget(self.keyword_textbox)
         self.layout.addWidget(self.msg_list_widget)
         self.layout.addWidget(self.show_msg_button)
+
         self.layout.addWidget(self.new_mail_button)
         self.layout.addWidget(self.refresh_button)
+        self.refresh_messages()
+
+
+    def is_matching_message(self, text, keyword):
+        """
+        Sprawdza, czy dana wiadomość zawiera słowo klucz lub słowo do niego podobne.
+        """
+        # Sprawdzanie tematu wiadomości
+        if keyword in text.lower():
+            return True
+            #try:
+            #    similarity = self.model.similarity(w, keyword)
+            #except:
+            #    similarity = 0
+            #if similarity > 0.7:
+            #    return True
+        return False
 
     def refresh_messages(self):
         # Wyszukiwanie nieprzeczytanych wiadomości
@@ -68,13 +93,31 @@ class EmailReader(QtWidgets.QWidget):
         # Czyszczenie listy tematów nieprzeczytanych wiadomości
         self.msg_list_widget.clear()
 
+        keyword = self.keyword_textbox.text().lower().strip()
+
         # Tworzenie listy tematów nieprzeczytanych wiadomości
         for num in self.unread_msg_nums:
             self.status, self.response = self.imap.fetch(num, '(RFC822)')
             self.msg = email.message_from_bytes(self.response[0][1])
             self.subject = self.msg['Subject']
-            self.msg_list_widget.addItem(self.subject)
-            
+
+            if keyword != '':
+                body = ''
+                for part in self.msg.walk():
+                    if part.get_content_type() == 'text/plain':
+                        body = part.get_payload(decode=True).decode('utf-8')
+
+                        break
+                body = body + self.subject
+                if self.is_matching_message(body, keyword):
+                    item = QtWidgets.QListWidgetItem(self.subject)
+                    item.setData(QtCore.Qt.UserRole, num)
+                    self.msg_list_widget.addItem(item)
+            else:
+                item = QtWidgets.QListWidgetItem(self.subject)
+                item.setData(QtCore.Qt.UserRole, num)
+                self.msg_list_widget.addItem(item)
+
     def auto_reply(self):
         # Wyszukiwanie nieprzeczytanych wiadomości
         self.imap.select('inbox')
@@ -199,7 +242,7 @@ class EmailReader(QtWidgets.QWidget):
         # Odczytywanie treści wiadomości
         self.current_item = self.msg_list_widget.currentItem()
         self.current_index = self.msg_list_widget.currentRow()
-        self.num = self.unread_msg_nums[self.current_index]
+        self.num = self.current_item.data(QtCore.Qt.UserRole)
         self.status, self.response = self.imap.fetch(self.num, '(RFC822)')
         self.msg = email.message_from_bytes(self.response[0][1])
         attachments = []
