@@ -24,7 +24,7 @@ class EmailReader(QtWidgets.QWidget):
         self.imap.select('inbox')
 
         self.auto_reply()
-        #self.model = KeyedVectors.load_word2vec_format('nkjp+wiki-forms-restricted-100-skipg-ns.txt')
+        self.model = KeyedVectors.load_word2vec_format('nkjp+wiki-forms-restricted-100-skipg-ns.txt')
         # Wyszukiwanie nieprzeczytanych wiadomości
         self.status, self.response = self.imap.search(None, 'ALL')
 
@@ -70,18 +70,17 @@ class EmailReader(QtWidgets.QWidget):
 
 
     def is_matching_message(self, text, keyword):
-        """
-        Sprawdza, czy dana wiadomość zawiera słowo klucz lub słowo do niego podobne.
-        """
+        
         # Sprawdzanie tematu wiadomości
         if keyword in text.lower():
             return True
-            #try:
-            #    similarity = self.model.similarity(w, keyword)
-            #except:
-            #    similarity = 0
-            #if similarity > 0.7:
-            #    return True
+        for word in text.lower().split():
+            try:
+                similarity = self.model.similarity(word, keyword)
+            except:
+                similarity = 0
+            if similarity > 0.7:
+                return True
         return False
 
     def refresh_messages(self):
