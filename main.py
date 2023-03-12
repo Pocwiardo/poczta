@@ -2,16 +2,17 @@ import sys
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtGui import QFont, QFontMetrics
 import smtplib
-import email
 import imaplib
 import email
 import os
 from gensim.models import KeyedVectors
+import nltk
 
 class EmailReader(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
 
+        self.setGeometry(100, 100, 640, 480)
         # Tworzenie połączenia z serwerem IMAP
         self.imap_server = 'outlook.office365.com'
         self.imap_port = 993
@@ -24,14 +25,16 @@ class EmailReader(QtWidgets.QWidget):
         # Wybór skrzynki odbiorczej
         self.imap.select('inbox')
 
-        self.auto_reply()
+
         #self.model = KeyedVectors.load_word2vec_format('nkjp+wiki-forms-restricted-100-skipg-ns.txt')
+        self.model = KeyedVectors.load_word2vec_format('GoogleNews-vectors-negative300.bin', binary=True, limit=20000)
         self.unread_font = QFont()
         self.unread_font.setBold(True)
         self.status, self.response = self.imap.search(None, 'ALL')
 
         self.msg_nums = self.response[0].split()
         self.unseen_msg_nums = self.imap.search(None, 'UNSEEN')[1][0].split()
+        #self.auto_reply()
 
         self.msg_list_widget = QtWidgets.QListWidget(self)
         for num in self.msg_nums:
@@ -73,16 +76,20 @@ class EmailReader(QtWidgets.QWidget):
 
     def is_matching_message(self, text, keyword):
 
-        # Sprawdzanie tematu wiadomości
-        if keyword in text.lower():
+        if keyword.lower() in text.lower():
             return True
-        #for word in text.lower().split():
-        #    try:
-        #        similarity = self.model.similarity(word, keyword)
-        #    except:
-        #        similarity = 0
-        #    if similarity > 0.7:
-        #        return True
+        for word in text.lower().split():
+            for keywords in keyword.lower().split():
+                try:
+                    similarity = self.model.similarity(word, keywords)
+
+                except:
+                    similarity = 0
+                if similarity > 0.4:
+                    #print(keywords)
+                    #print(word)
+                    #print(similarity)
+                    return True
         return False
 
     def refresh_messages(self):
@@ -121,12 +128,14 @@ class EmailReader(QtWidgets.QWidget):
                 item.setData(QtCore.Qt.UserRole, num)
                 self.msg_list_widget.addItem(item)
 
+        self.auto_reply()
+
     def auto_reply(self):
         # Wyszukiwanie nieprzeczytanych wiadomości
-        self.imap.select('inbox')
-        self.status, self.response = self.imap.search(None, 'UNSEEN')
+        #self.imap.select('inbox')
+        #self.status, self.response = self.imap.search(None, 'UNSEEN')
 
-        for num in self.response[0].split():
+        for num in self.unseen_msg_nums:
             # Pobieranie nieprzeczytanych wiadomości
             self.status, self.response = self.imap.fetch(num, '(RFC822)')
             email_data = self.response[0][1]
@@ -248,9 +257,28 @@ class EmailReader(QtWidgets.QWidget):
         self.num = self.current_item.data(QtCore.Qt.UserRole)
         #self.unseen_msg_nums = self.imap.search(None, 'UNSEEN')[1][0].split()
         if self.num in self.unseen_msg_nums:
-            print("Nieprzeczytana")
-        else:
-            print("przeczytana")
+            #print("Nieprzeczytana")
+            # Pobieranie nieprzeczytanych wiadomości
+            self.status, self.response = self.imap.fetch(self.num, '(RFC822)')
+            email_data = self.response[0][1]
+            message = email.message_from_bytes(email_data)
+
+            # Pobieranie nadawcy i tematu wiadomości
+            sender = message['From']
+            subject = message['Subject']
+
+            # Tworzenie odpowiedzi na wiadomość
+            # reply = email.message.EmailMessage()
+            # reply['To'] = sender
+            # reply['From'] = self.imap_username
+            # reply['Subject'] = 'Re: ' + subject
+            subject = 'Re: ' + subject
+            # reply.set_content('Automatyczna odpowiedź: Otrzymałem twoją wiadomość.')
+            replied_message = 'Automatyczna odpowiedź: Odczytałem twoją wiadomość. '
+
+            self.send_mail(sender, subject, replied_message)
+        #else:
+        #    print("przeczytana")
         self.status, self.response = self.imap.fetch(self.num, '(RFC822)')
         self.msg = email.message_from_bytes(self.response[0][1])
         attachments = []
