@@ -6,7 +6,6 @@ import imaplib
 import email
 import os
 from gensim.models import KeyedVectors
-import nltk
 
 class EmailReader(QtWidgets.QWidget):
     def __init__(self):
@@ -53,12 +52,12 @@ class EmailReader(QtWidgets.QWidget):
         self.refresh_button = QtWidgets.QPushButton('Odśwież', self)
         self.refresh_button.clicked.connect(self.refresh_messages)
 
-        
+
         self.keyword_textbox = QtWidgets.QLineEdit(self)
         self.keyword_textbox.setPlaceholderText('Wpisz słowo kluczowe')
         self.keyword_textbox.returnPressed.connect(self.refresh_messages)
 
-        
+
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.addWidget(self.keyword_textbox)
         self.layout.addWidget(self.msg_list_widget)
@@ -67,7 +66,9 @@ class EmailReader(QtWidgets.QWidget):
         self.layout.addWidget(self.new_mail_button)
         self.layout.addWidget(self.refresh_button)
         self.refresh_messages()
-
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.refresh_messages)
+        self.timer.start(30000)
 
     def is_matching_message(self, text, keyword):
 
