@@ -1,5 +1,6 @@
 import sys
 from PySide6 import QtWidgets, QtCore
+from PySide6.QtGui import QFont, QFontMetrics
 import smtplib
 import email
 import imaplib
@@ -24,15 +25,16 @@ class EmailReader(QtWidgets.QWidget):
         self.imap.select('inbox')
 
         self.auto_reply()
-        self.model = KeyedVectors.load_word2vec_format('nkjp+wiki-forms-restricted-100-skipg-ns.txt')
-        # Wyszukiwanie nieprzeczytanych wiadomości
+        #self.model = KeyedVectors.load_word2vec_format('nkjp+wiki-forms-restricted-100-skipg-ns.txt')
+        self.unread_font = QFont()
+        self.unread_font.setBold(True)
         self.status, self.response = self.imap.search(None, 'ALL')
 
-        self.unread_msg_nums = self.response[0].split()
+        self.msg_nums = self.response[0].split()
+        self.unseen_msg_nums = self.imap.search(None, 'UNSEEN')[1][0].split()
 
-        # Tworzenie listy tematów nieprzeczytanych wiadomości
         self.msg_list_widget = QtWidgets.QListWidget(self)
-        for num in self.unread_msg_nums:
+        for num in self.msg_nums:
             self.status, self.response = self.imap.fetch(num, '(RFC822)')
             self.msg = email.message_from_bytes(self.response[0][1])
             self.subject = self.msg['Subject']
@@ -70,50 +72,52 @@ class EmailReader(QtWidgets.QWidget):
 
 
     def is_matching_message(self, text, keyword):
-        
+
         # Sprawdzanie tematu wiadomości
         if keyword in text.lower():
             return True
-        for word in text.lower().split():
-            try:
-                similarity = self.model.similarity(word, keyword)
-            except:
-                similarity = 0
-            if similarity > 0.7:
-                return True
+        #for word in text.lower().split():
+        #    try:
+        #        similarity = self.model.similarity(word, keyword)
+        #    except:
+        #        similarity = 0
+        #    if similarity > 0.7:
+        #        return True
         return False
 
     def refresh_messages(self):
-        # Wyszukiwanie nieprzeczytanych wiadomości
         self.imap.select('inbox')
         self.status, self.response = self.imap.search(None, 'ALL')
-        self.unread_msg_nums = self.response[0].split()
+        self.msg_nums = self.response[0].split()
+        self.unseen_msg_nums = self.imap.search(None, 'UNSEEN')[1][0].split()
 
-        # Czyszczenie listy tematów nieprzeczytanych wiadomości
         self.msg_list_widget.clear()
 
         keyword = self.keyword_textbox.text().lower().strip()
 
-        # Tworzenie listy tematów nieprzeczytanych wiadomości
-        for num in self.unread_msg_nums:
+        for num in self.msg_nums:
             self.status, self.response = self.imap.fetch(num, '(RFC822)')
             self.msg = email.message_from_bytes(self.response[0][1])
             self.subject = self.msg['Subject']
+            font = QFont()
+            if num in self.unseen_msg_nums:
+                font.setBold(True)
 
             if keyword != '':
                 body = ''
                 for part in self.msg.walk():
                     if part.get_content_type() == 'text/plain':
                         body = part.get_payload(decode=True).decode('utf-8')
-
                         break
                 body = body + self.subject
                 if self.is_matching_message(body, keyword):
                     item = QtWidgets.QListWidgetItem(self.subject)
+                    item.setFont(font)
                     item.setData(QtCore.Qt.UserRole, num)
                     self.msg_list_widget.addItem(item)
             else:
                 item = QtWidgets.QListWidgetItem(self.subject)
+                item.setFont(font)
                 item.setData(QtCore.Qt.UserRole, num)
                 self.msg_list_widget.addItem(item)
 
@@ -148,7 +152,7 @@ class EmailReader(QtWidgets.QWidget):
         # Oczekiwanie na kolejne wiadomości
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.auto_reply)
-        self.timer.start(60000)  # Czas w milisekundach (1 minuta = 60 000 ms)
+        self.timer.start(60000)
 
     def open_mail_dialog(self):
         # Tworzenie nowego okna dialogowego
@@ -242,6 +246,11 @@ class EmailReader(QtWidgets.QWidget):
         self.current_item = self.msg_list_widget.currentItem()
         self.current_index = self.msg_list_widget.currentRow()
         self.num = self.current_item.data(QtCore.Qt.UserRole)
+        #self.unseen_msg_nums = self.imap.search(None, 'UNSEEN')[1][0].split()
+        if self.num in self.unseen_msg_nums:
+            print("Nieprzeczytana")
+        else:
+            print("przeczytana")
         self.status, self.response = self.imap.fetch(self.num, '(RFC822)')
         self.msg = email.message_from_bytes(self.response[0][1])
         attachments = []
@@ -288,8 +297,10 @@ class EmailReader(QtWidgets.QWidget):
         button_box.accepted.connect(dialog.accept)
         layout.addWidget(button_box)
 
+
         # Wyświetlenie okna dialogowego i oczekiwanie na zakończenie
         dialog.exec()
+        self.refresh_messages()
 
     def download_attachment(self, dialog, filename, attachments):
         # Pobieranie wybranego załącznika i zapisywanie do pliku
